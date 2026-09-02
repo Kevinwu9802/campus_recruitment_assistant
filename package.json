@@ -1,0 +1,60 @@
+{
+  "name": "daily-leetcode-helper",
+  "productName": "LeetCode每日刷题助手",
+  "version": "1.0.0",
+  "description": "根据 LeetCode 个人主页公开题单自动生成每日刷题计划（新题+复习），内置记忆库、专注计时器与 WebDAV 多端同步",
+  "main": "main/main.js",
+  "author": "KevinWu",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "start:linux": "bash scripts/start-linux.sh",
+    "start:win": "scripts\\start-win.bat",
+    "dist": "electron-builder",
+    "dist:linux": "electron-builder --linux",
+    "dist:win": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.kevinwu.daily-leetcode-helper",
+    "productName": "LeetCode每日刷题助手",
+    "files": [
+      "main/**/*",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "asar": true,
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility",
+      "maintainer": "KevinWu"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "DailyLeetCodeHelper-Setup-${version}.${ext}",
+      "shortcutName": "LeetCode每日刷题助手"
+    },
+    "portable": {
+      "artifactName": "DailyLeetCodeHelper-${version}-portable.${ext}",
+      "requestExecutionLevel": "user"
+    }
+  }
+}
