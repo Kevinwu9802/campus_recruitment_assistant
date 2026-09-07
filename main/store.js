@@ -51,7 +51,7 @@ function defaultConfig() {
       timeout: 45,                  // 秒
       cleanCards: true,            // 导入时用 LLM 再审阅、组合/拆分/补充知识点
     },
-    ui: { theme: 'auto' },
+    ui: { theme: 'dark' },           // dark | light | auto（跟随系统）
   };
 }
 

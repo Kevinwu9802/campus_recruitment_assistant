@@ -19,7 +19,19 @@ window.PageSettings = {
 
     container.innerHTML = `
       <div class="page-title">设置</div>
-      <div class="page-sub">配置题单来源、月份节奏、抓取计划、数据同步与计时偏好</div>
+      <div class="page-sub">配置题单来源、月份节奏、抓取计划、数据同步、评分与外观</div>
+
+      <div class="card">
+        <h3>🎨 外观</h3>
+        <div class="row">
+          <span class="muted">主题：</span>
+          <div class="seg" id="themeSel">
+            <button data-theme="dark" class="${(config.ui?.theme || 'dark') === 'dark' ? 'active' : ''}">🌙 深色</button>
+            <button data-theme="light" class="${config.ui?.theme === 'light' ? 'active' : ''}">☀️ 浅色</button>
+            <button data-theme="auto" class="${config.ui?.theme === 'auto' ? 'active' : ''}">💻 跟随系统</button>
+          </div>
+        </div>
+      </div>
 
       <div class="card">
         <h3>👤 个人信息（题单来源）</h3>
@@ -197,6 +209,18 @@ window.PageSettings = {
   },
 
   bind(container, months, config) {
+    // 主题切换
+    const themeSel = container.querySelector('#themeSel');
+    if (themeSel) themeSel.querySelectorAll('button').forEach(b => b.addEventListener('click', async () => {
+      themeSel.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      const t = b.dataset.theme;
+      await window.lcAPI.saveConfig({ ui: Object.assign({}, (config.ui || {}), { theme: t }) });
+      if (window.APP && window.APP.setTheme) window.APP.setTheme(t);
+      APP.metaCache.invalidate();
+      toast('已切换主题：' + (t === 'dark' ? '深色' : t === 'light' ? '浅色' : '跟随系统'), 'success');
+    }));
+
     // 保存通用配置
     const saveCommon = async () => {
       const cfg = {

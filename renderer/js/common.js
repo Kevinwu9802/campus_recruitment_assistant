@@ -8,6 +8,16 @@ function esc(s) {
   }[c]));
 }
 
+/** 主题解析：dark/light/auto(auto 按系统 prefers-color-scheme) */
+APP.applyTheme = function (theme) {
+  let resolved = theme || 'dark';
+  if (resolved === 'auto') {
+    resolved = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+  document.documentElement.setAttribute('data-theme', resolved);
+  return resolved;
+};
+
 function fmtDate(d) {
   const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;

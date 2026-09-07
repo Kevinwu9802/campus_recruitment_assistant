@@ -74,7 +74,26 @@
     });
   }
 
+  let currentTheme = 'dark';
+  function initTheme() {
+    window.lcAPI.getConfig().then(cfg => {
+      currentTheme = (cfg.ui && cfg.ui.theme) || 'dark';
+      APP.applyTheme(currentTheme);
+      // 跟随系统时，监听系统明暗切换
+      if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+          if (currentTheme === 'auto') APP.applyTheme('auto');
+        });
+      }
+    }).catch(() => {});
+  }
+  window.APP.setTheme = function (theme) {
+    currentTheme = theme;
+    APP.applyTheme(theme);
+  };
+
   document.addEventListener('DOMContentLoaded', () => {
+    initTheme();
     initStatus();
     if (!location.hash) location.hash = '#/today';
     route();
