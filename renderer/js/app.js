@@ -6,6 +6,7 @@
     calendar: { title: '月历排布', page: window.PageCalendar },
     lists: { title: '题单管理', page: window.PageLists },
     history: { title: '记忆库', page: window.PageHistory },
+    bawen: { title: '八股文', page: window.PageBawen },
     stats: { title: '统计', page: window.PageStats },
     timer: { title: '专注计时', page: window.PageTimer },
     settings: { title: '设置', page: window.PageSettings },

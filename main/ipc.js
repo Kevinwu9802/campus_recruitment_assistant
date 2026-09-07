@@ -2,7 +2,7 @@
 /**
  * ipc.js — 渲染进程 ⇄ 主进程通信
  */
-const { ipcMain, shell, app } = require('electron');
+const { ipcMain, shell, app, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -11,6 +11,7 @@ const leetcode = require('./leetcode');
 const scheduler = require('./scheduler');
 const sync = require('./sync');
 const meta = require('./meta');
+const kaoyan = require('./kaoyan');
 
 let ctx = null;
 
@@ -131,6 +132,75 @@ function registerIpc({ win, broadcast, notify }) {
   ipcMain.handle('sessions:clear', () => {
     store.set('sessions', { sessions: [] });
     return true;
+  });
+
+  // ---------- 八股文 ----------
+  ipcMain.handle('kaoyan:pickFiles', async () => {
+    const r = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'], filters: [
+      { name: '八股文件', extensions: ['pdf', 'docx', 'txt', 'md'] },
+      { name: '所有文件', extensions: ['*'] },
+    ] });
+    return r.canceled ? [] : r.filePaths;
+  });
+
+  ipcMain.handle('kaoyan:addSourceFile', async (e, filePath) => {
+    try { return await kaoyan.addSourceFile(filePath); }
+    catch (err) { return { ok: false, error: err.message }; }
+  });
+
+  ipcMain.handle('kaoyan:addSourceUrl', async (e, url, opts) => {
+    try {
+      return await kaoyan.addSourceUrl(url, Object.assign({}, opts || {}, {
+        onProgress: (msg) => { if (ctx && ctx.broadcast) ctx.broadcast('kaoyanProgress', { msg }); },
+      }));
+    } catch (err) { return { ok: false, error: err.message }; }
+  });
+
+  ipcMain.handle('kaoyan:reparseSource', async (e, id) => {
+    try { return await kaoyan.reparseSource(id); }
+    catch (err) { return { ok: false, error: err.message }; }
+  });
+
+  ipcMain.handle('kaoyan:previewSourceFile', async (e, filePath, opts) => {
+    try { return await kaoyan.previewSource(filePath, 'file', opts || {}); }
+    catch (err) { return { ok: false, error: err.message }; }
+  });
+  ipcMain.handle('kaoyan:previewSourceUrl', async (e, url, opts) => {
+    try {
+      return await kaoyan.previewSource(url, 'url', Object.assign({}, opts || {}, {
+        onProgress: (msg) => { if (ctx && ctx.broadcast) ctx.broadcast('kaoyanProgress', { msg }); },
+      }));
+    } catch (err) { return { ok: false, error: err.message }; }
+  });
+  ipcMain.handle('kaoyan:commitPending', (e, token, acceptedIdx) => kaoyan.commitPending(token, acceptedIdx));
+  ipcMain.handle('kaoyan:discardPending', (e, token) => kaoyan.discardPending(token));
+  ipcMain.handle('kaoyan:previewReclean', async (e, sourceId) => {
+    try { return await kaoyan.previewReclean(sourceId); }
+    catch (err) { return { ok: false, error: err.message }; }
+  });
+
+  ipcMain.handle('kaoyan:removeSource', (e, id) => kaoyan.removeSource(id));
+
+  ipcMain.handle('kaoyan:listSources', () => kaoyan.listSources());
+
+  ipcMain.handle('kaoyan:listCards', (e, filter) => kaoyan.listCards(filter || {}));
+
+  ipcMain.handle('kaoyan:getCard', (e, id) => kaoyan.getCard(id));
+
+  ipcMain.handle('kaoyan:submitAnswer', async (e, cardId, userAns) => kaoyan.submitAnswer(cardId, userAns));
+
+  ipcMain.handle('kaoyan:viewCard', (e, cardId) => kaoyan.viewCard(cardId));
+
+  ipcMain.handle('kaoyan:setCardStatus', (e, cardId, status) => kaoyan.setCardStatus(cardId, status));
+
+  ipcMain.handle('kaoyan:progress', () => kaoyan.progress());
+
+  // ---------- LLM 评分 ----------
+  ipcMain.handle('llm:getKey', () => meta.getApiKey());
+  ipcMain.handle('llm:setKey', (e, key) => { meta.saveApiKey(key || ''); return true; });
+  ipcMain.handle('llm:test', (e, cfg) => {
+    const full = Object.assign({}, cfg || {}, { apiKey: meta.getApiKey() || (cfg && cfg.apiKey) });
+    return require('./llm').testConnection(full);
   });
 
   // ---------- 配置 ----------

@@ -1,7 +1,7 @@
 {
   "name": "daily-leetcode-helper",
   "productName": "LeetCode每日刷题助手",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "根据 LeetCode 个人主页公开题单自动生成每日刷题计划（新题+复习），内置记忆库、专注计时器与 WebDAV 多端同步",
   "main": "main/main.js",
   "author": "KevinWu",
@@ -56,5 +56,9 @@
       "artifactName": "DailyLeetCodeHelper-${version}-portable.${ext}",
       "requestExecutionLevel": "user"
     }
+  },
+  "dependencies": {
+    "mammoth": "^1.12.2",
+    "pdf-parse": "^2.4.5"
   }
 }

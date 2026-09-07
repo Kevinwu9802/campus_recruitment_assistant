@@ -14,6 +14,7 @@ const FILES = {
   history: 'history.json',
   plan: 'plan.json',
   sessions: 'sessions.json',
+  kaoyan: 'kaoyan.json',
   syncState: 'syncState.json',
 };
 
@@ -42,6 +43,14 @@ function defaultConfig() {
       intervalMin: 30,
     },
     timer: { defaultMinutes: 25, sessionTag: '刷题' },
+    llm: {
+      mode: 'similarity',          // similarity | llm | none
+      provider: 'deepseek',
+      baseUrl: 'https://api.deepseek.com/v1',
+      model: 'deepseek-chat',      // 可改为 deepseek-v4-flash 等
+      timeout: 45,                  // 秒
+      cleanCards: true,            // 导入时用 LLM 再审阅、组合/拆分/补充知识点
+    },
     ui: { theme: 'auto' },
   };
 }

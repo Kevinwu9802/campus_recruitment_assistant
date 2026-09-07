@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const store = require('./store');
 
-const SYNC_FILES = ['config', 'lists', 'history', 'plan', 'sessions'];
+const SYNC_FILES = ['config', 'lists', 'history', 'plan', 'sessions', 'kaoyan'];
 const TOLERANCE_MS = 2500; // Last-Modified 只有秒级精度，容差 2.5s
 
 let busy = false;

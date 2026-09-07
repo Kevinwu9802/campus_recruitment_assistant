@@ -7,6 +7,7 @@ window.PageSettings = {
     const config = await window.lcAPI.getConfig();
     const info = await window.lcAPI.getInfo();
     const year = this.year;
+    const llmKey = await window.lcAPI.getLlmKey();
 
     // 12 个月的有效配置（内置预设 + 用户覆盖）
     const months = [];
@@ -100,6 +101,49 @@ window.PageSettings = {
           <h3>⏱️ 计时器默认</h3>
           <div class="field"><label>默认专注时长（分钟）</label><input type="number" id="timerMin" value="${config.timer?.defaultMinutes || 25}" min="1" max="180" style="width:100px" /></div>
           <div class="field"><label>默认标签</label><input type="text" id="timerTag" value="${esc(config.timer?.sessionTag || '刷题')}" style="width:180px" /></div>
+        </div>
+      </div>
+
+      <div class="card" id="llmCard">
+        <h3>🧠 八股评分方式 <span class="muted" style="font-weight:400">（离线相似度 / LLM 智能评分 / 不评分只看答案）</span></h3>
+        <div class="field">
+          <div class="seg" id="llmMode">
+            <button data-mode="similarity" class="${config.llm?.mode === 'similarity' || !config.llm?.mode ? 'active' : ''}">离线相似度</button>
+            <button data-mode="llm" class="${config.llm?.mode === 'llm' ? 'active' : ''}">LLM 智能评分</button>
+            <button data-mode="none" class="${config.llm?.mode === 'none' ? 'active' : ''}">不评分（只看答案）</button>
+          </div>
+          <div class="hint">
+            练习页也可随时切换。「不评分」时提交按钮变为「查看答案」，不做自动打分。LLM 失败会自动回落到离线相似度。
+          </div>
+          <div class="row" style="margin-top:10px">
+            <label class="muted" style="cursor:pointer;display:flex;align-items:center;gap:6px">
+              <input type="checkbox" id="cleanCards" ${config.llm?.cleanCards !== false ? 'checked' : ''} /> 导入时用 LLM 智能清洗/生成知识点（审阅、组合、拆分、补充）
+            </label>
+            <span class="muted" style="font-size:11.5px">未配置 LLM 或调用失败时自动用规则切割</span>
+          </div>
+        </div>
+
+        <div id="llmCfg" class="${config.llm?.mode === 'llm' ? '' : 'hide'}">
+          <div class="grid-2">
+            <div class="field">
+              <label>服务提供商（预设）</label>
+              <div class="row" style="gap:6px;flex-wrap:wrap" id="llmPreset">
+                <button class="btn-sm llm-pre" data-base="https://api.deepseek.com/v1" data-model="deepseek-chat" data-name="DeepSeek">DeepSeek（flash）</button>
+                <button class="btn-sm llm-pre" data-base="https://api.openai.com/v1" data-model="gpt-4o-mini" data-name="OpenAI">OpenAI</button>
+                <button class="btn-sm llm-pre" data-base="https://dashscope.aliyuncs.com/compatible-mode/v1" data-model="qwen-plus" data-name="通义千问">通义千问</button>
+                <button class="btn-sm llm-pre" data-base="http://localhost:11434/v1" data-model="qwen2.5" data-name="本地Ollama">本地 Ollama</button>
+              </div>
+              <div class="hint">DeepSeek 默认使用 deepseek-chat（快速模型）；若要 deepseek-v4-flash 等，直接在下方「模型」栏修改。</div>
+            </div>
+            <div class="field"><label>API Key（仅保存在本机，不随同步上传）</label><input type="password" id="llmKey" value="${esc(llmKey)}" placeholder="sk-..." style="width:100%" /><div class="hint">DeepSeek 平台申请后复制。密钥只存本机 userData，不会同步到坚果云/其它设备。</div></div>
+            <div class="field"><label>服务地址（OpenAI 兼容 baseUrl）</label><input type="text" id="llmBase" value="${esc(config.llm?.baseUrl || 'https://api.deepseek.com/v1')}" style="width:100%" /></div>
+            <div class="field"><label>模型名</label><input type="text" id="llmModel" value="${esc(config.llm?.model || 'deepseek-chat')}" style="width:100%" /></div>
+          </div>
+          <div class="row">
+            <button class="btn-primary" data-act="llmSave">保存 LLM 配置</button>
+            <button class="btn-sm" data-act="llmTest">测试连接</button>
+            <span class="muted" id="llmMsg"></span>
+          </div>
         </div>
       </div>
 
@@ -236,6 +280,56 @@ window.PageSettings = {
     });
     ['#timerMin', '#timerTag'].forEach(sel => {
       container.querySelector(sel).addEventListener('change', saveCommon);
+    });
+
+    // 八股评分方式
+    const llmMode = container.querySelector('#llmMode');
+    const llmCfg = container.querySelector('#llmCfg');
+    const saveLlm = async () => {
+      const cfg = {
+        mode: llmMode.querySelector('button.active')?.dataset.mode || 'similarity',
+        provider: container.querySelector('.llm-pre.on')?.dataset.name || 'deepseek',
+        baseUrl: container.querySelector('#llmBase').value.trim() || 'https://api.deepseek.com/v1',
+        model: container.querySelector('#llmModel').value.trim() || 'deepseek-chat',
+        timeout: 45,
+        cleanCards: container.querySelector('#cleanCards')?.checked !== false,
+      };
+      await window.lcAPI.saveConfig({ llm: cfg });
+      await window.lcAPI.setLlmKey(container.querySelector('#llmKey').value.trim());
+      APP.metaCache.invalidate();
+      return cfg;
+    };
+    llmMode.querySelectorAll('button').forEach(b => b.addEventListener('click', async () => {
+      llmMode.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      llmCfg.classList.toggle('hide', b.dataset.mode !== 'llm');
+      await saveLlm();
+      toast('已切换评分方式', 'success');
+    }));
+    container.querySelectorAll('.llm-pre').forEach(b => b.addEventListener('click', () => {
+      container.querySelectorAll('.llm-pre').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      container.querySelector('#llmBase').value = b.dataset.base;
+      container.querySelector('#llmModel').value = b.dataset.model;
+    }));
+    container.querySelector('[data-act=llmSave]').addEventListener('click', async () => {
+      await saveLlm();
+      const m = container.querySelector('#llmMsg');
+      m.textContent = '✓ 已保存（API Key 仅在本机）';
+      setTimeout(() => m.textContent = '', 2500);
+    });
+    container.querySelector('[data-act=llmTest]').addEventListener('click', async () => {
+      const m = container.querySelector('#llmMsg');
+      const cfg = {
+        baseUrl: container.querySelector('#llmBase').value.trim(),
+        model: container.querySelector('#llmModel').value.trim(),
+        apiKey: container.querySelector('#llmKey').value.trim(),
+        timeout: 45,
+      };
+      m.textContent = '测试中…';
+      const r = await window.lcAPI.testLlm(cfg);
+      m.textContent = r.ok ? '✓ ' + r.msg + (r.reply ? '（' + r.reply + '）' : '') : '✗ ' + r.error;
+      toast(r.ok ? 'LLM 连接成功' : 'LLM 测试失败：' + r.error, r.ok ? 'success' : 'error');
     });
 
     // 同步

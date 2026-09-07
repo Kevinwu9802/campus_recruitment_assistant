@@ -38,6 +38,30 @@ contextBridge.exposeInMainWorld('lcAPI', {
   addSession: (s) => ipcRenderer.invoke('sessions:add', s),
   clearSessions: () => ipcRenderer.invoke('sessions:clear'),
 
+  // 八股文
+  pickBawenFiles: () => ipcRenderer.invoke('kaoyan:pickFiles'),
+  addSourceFile: (p) => ipcRenderer.invoke('kaoyan:addSourceFile', p),
+  addSourceUrl: (url, opts) => ipcRenderer.invoke('kaoyan:addSourceUrl', url, opts),
+  previewSourceFile: (p, opts) => ipcRenderer.invoke('kaoyan:previewSourceFile', p, opts),
+  previewSourceUrl: (url, opts) => ipcRenderer.invoke('kaoyan:previewSourceUrl', url, opts),
+  commitPending: (token, acceptedIdx) => ipcRenderer.invoke('kaoyan:commitPending', token, acceptedIdx),
+  discardPending: (token) => ipcRenderer.invoke('kaoyan:discardPending', token),
+  previewReclean: (sourceId) => ipcRenderer.invoke('kaoyan:previewReclean', sourceId),
+  reparseSource: (id) => ipcRenderer.invoke('kaoyan:reparseSource', id),
+  removeSource: (id) => ipcRenderer.invoke('kaoyan:removeSource', id),
+  listSources: () => ipcRenderer.invoke('kaoyan:listSources'),
+  listCards: (filter) => ipcRenderer.invoke('kaoyan:listCards', filter),
+  getCard: (id) => ipcRenderer.invoke('kaoyan:getCard', id),
+  submitAnswer: (cardId, ans) => ipcRenderer.invoke('kaoyan:submitAnswer', cardId, ans),
+  viewCard: (cardId) => ipcRenderer.invoke('kaoyan:viewCard', cardId),
+  setCardStatus: (cardId, status) => ipcRenderer.invoke('kaoyan:setCardStatus', cardId, status),
+  getBawenProgress: () => ipcRenderer.invoke('kaoyan:progress'),
+
+  // LLM 评分
+  getLlmKey: () => ipcRenderer.invoke('llm:getKey'),
+  setLlmKey: (key) => ipcRenderer.invoke('llm:setKey', key),
+  testLlm: (cfg) => ipcRenderer.invoke('llm:test', cfg),
+
   // 配置
   getConfig: () => ipcRenderer.invoke('config:get'),
   saveConfig: (patch) => ipcRenderer.invoke('config:save', patch),
@@ -58,6 +82,11 @@ contextBridge.exposeInMainWorld('lcAPI', {
     const fn = (e, d) => cb(d);
     ipcRenderer.on('fetchStatus', fn);
     return () => ipcRenderer.removeListener('fetchStatus', fn);
+  },
+  onKaoyanProgress: (cb) => {
+    const fn = (e, d) => cb(d);
+    ipcRenderer.on('kaoyanProgress', fn);
+    return () => ipcRenderer.removeListener('kaoyanProgress', fn);
   },
   onSyncStatus: (cb) => {
     const fn = (e, d) => cb(d);
