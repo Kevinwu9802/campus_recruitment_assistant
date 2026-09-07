@@ -9,9 +9,10 @@ window.PageToday = {
     const today = todayStr();
     const isToday = date === today;
     const isFuture = date > today;
-    const [plan, listsData, stats, config] = await Promise.all([
+    const [plan, listsData, history, stats, config] = await Promise.all([
       window.lcAPI.getPlan(date),
       APP.metaCache.listsData(),
+      window.lcAPI.getHistory(),
       window.lcAPI.getStats(),
       APP.metaCache.configData(),
     ]);
@@ -19,6 +20,7 @@ window.PageToday = {
 
     const readonly = plan.readonly !== false && !isToday; // 非当天一律只读
     const listBy = listIndex(listsData.lists);
+    const historyByQid = historyIndex(history); // 供旧卡缺 titleSlug 时兜底
 
     const done = plan.items.filter(i => i.status === 'done').length;
     const newDone = plan.items.filter(i => i.kind === 'new' && i.status === 'done').length;
@@ -82,12 +84,12 @@ window.PageToday = {
         <div class="card">
           <h3>🆕 新题 <span class="muted">（${newTotal} 道，难度以中等为主）</span></h3>
           ${newTotal === 0 ? '<div class="empty">新题池为空 — 去「题单管理」抓取更多题单，或取消部分题的「已掌握」标记</div>' : ''}
-          ${plan.items.filter(i => i.kind === 'new').map(i => problemRowHtml(i, listBy, null, readonly)).join('')}
+          ${plan.items.filter(i => i.kind === 'new').map(i => problemRowHtml(i, listBy, historyByQid, readonly)).join('')}
         </div>
         <div class="card">
           <h3>🔁 复习 <span class="muted">（${revTotal} 道，按上次复习时间由久到近）</span></h3>
           ${revTotal === 0 ? '<div class="empty">复习池为空 — 完成一些新题后，它们会自动进入复习队列</div>' : ''}
-          ${plan.items.filter(i => i.kind === 'review').map(i => problemRowHtml(i, listBy, null, readonly)).join('')}
+          ${plan.items.filter(i => i.kind === 'review').map(i => problemRowHtml(i, listBy, historyByQid, readonly)).join('')}
         </div>
       `}`;
     }

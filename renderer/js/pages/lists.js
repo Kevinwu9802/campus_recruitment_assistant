@@ -27,8 +27,9 @@ window.PageLists = {
 
       <div class="card">
         <h3>👤 用户主页 <span class="muted" style="font-weight:400">（可配置，抓取该主页公开的题单）</span></h3>
+        ${!config.userSlug ? '<div class="muted" style="background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin-bottom:10px">⚠ 首次使用：请在下方填入你的 LeetCode 主页链接，然后点击「保存并抓取题单」。</div>' : ''}
         <div class="row">
-          <input type="url" id="profileUrl" class="grow" value="${esc(config.profileUrl || '')}" placeholder="https://leetcode.cn/u/kevinwu-z/" />
+          <input type="url" id="profileUrl" class="grow" value="${esc(config.profileUrl || '')}" placeholder="https://leetcode.cn/u/your-username/" />
           <button class="btn-primary" data-act="fetchProfile">保存并抓取题单</button>
         </div>
         <div class="muted" style="margin-top:8px">当前 userSlug：<b class="mono">${esc(config.userSlug || '—')}</b>

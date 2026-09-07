@@ -97,7 +97,10 @@ async function runFetch(reason) {
   try {
     const config = store.get('config') || {};
     const slug = config.userSlug || leetcode.parseSlug(config.profileUrl);
-    if (!slug) throw new Error('未配置用户主页（userSlug）');
+    if (!slug) {
+      // 未配置主页：不当作错误，仅提示（首次使用先去配置）
+      return { ok: false, error: '尚未配置个人主页：请到「题单管理」填入你的 LeetCode 主页链接' };
+    }
     const lists = store.get('lists') || { lists: [], updatedAt: null };
     broadcast('fetchStatus', { running: true, step: `抓取用户 ${slug} 的公开题单…` });
     const { lists: remoteLists } = await leetcode.getUserLists(slug);
@@ -193,13 +196,13 @@ app.whenReady().then(() => {
   createWindow();
   startTimers();
 
-  // 启动后：题单过期则静默抓取
+  // 启动后：题单过期则静默抓取（未配置主页则不抓，交由界面提示）
   const config = store.get('config') || {};
   const lists = store.get('lists');
   const stale = lists && lists.updatedAt
     ? (Date.now() - new Date(lists.updatedAt).getTime()) > (config.fetch?.staleHours || 12) * 3600 * 1000
     : true;
-  if (stale) runFetch('启动时题单过期');
+  if (stale && (config.userSlug || leetcode.parseSlug(config.profileUrl || '')) ) runFetch('启动时题单过期');
   // 启动时同步一次
   if (config.sync && config.sync.enabled) sync.syncNow({ report: () => {} });
 

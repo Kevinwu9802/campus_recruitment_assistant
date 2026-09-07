@@ -27,8 +27,8 @@ let onSaved = null; // callback after flush (for sync trigger)
 function defaultConfig() {
   return {
     version: 1,
-    profileUrl: '',                  // 首次由用户自行填写（不打包任何个人信息）
-    userSlug: '',
+    profileUrl: 'https://leetcode.cn/u/kevinwu-z/',
+    userSlug: 'kevinwu-z',
     scheduleStart: '2026-09-01', // 计划开始日期（此前的日期不生成题单）
     listEnabled: {},            // slug -> true/false，null 表示全部启用
     monthPlans: {},             // 'YYYY-MM' -> MonthPlan，缺省回退到 getMonthPlanDefault

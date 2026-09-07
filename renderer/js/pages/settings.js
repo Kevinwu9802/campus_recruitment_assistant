@@ -37,7 +37,7 @@ window.PageSettings = {
         <h3>👤 个人信息（题单来源）</h3>
         <div class="field">
           <label>LeetCode 个人主页链接</label>
-          <input type="url" id="cfgProfileUrl" class="grow" value="${esc(config.profileUrl || '')}" placeholder="https://leetcode.cn/u/kevinwu-z/" style="width:100%" />
+          <input type="url" id="cfgProfileUrl" class="grow" value="${esc(config.profileUrl || '')}" placeholder="https://leetcode.cn/u/your-username/" style="width:100%" />
           <div class="hint">用于抓取该主页「题单」Tab 下的公开题单。修改后请在「题单管理」页点击保存并抓取。</div>
         </div>
         <div class="field">

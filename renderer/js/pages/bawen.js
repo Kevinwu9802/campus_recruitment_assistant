@@ -245,15 +245,35 @@ window.PageBawen = {
     }));
   },
 
+  orderCards(cards) {
+    const order = this.state.order || 'random';
+    const arr = cards.slice();
+    if (order === 'list') return arr;
+    for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } // Fisher-Yates
+    if (order === 'weak') {
+      const rank = c => c.status === 'unknown' ? 0 : ((c.status === 'new' || (c.attempts || 0) === 0) ? 1 : 2);
+      arr.sort((a, b) => rank(a) - rank(b)); // 稳定排序：待复习优先，组内保持随机
+    }
+    return arr;
+  },
+
   async renderPractice(container, body, sources, progress) {
     const filter = this.state.sourceFilter;
-    const cards = await window.lcAPI.listCards(filter === 'all' ? {} : { sourceId: filter });
-    this.state.cards = cards;
-    if (this.state.focusCard) {
-      const i = cards.findIndex(c => c.id === this.state.focusCard);
-      if (i >= 0) this.state.idx = i;
-      this.state.focusCard = null;
+    const order = this.state.order || 'random';
+    // 出题队列：仅当 范围/顺序/洗牌 变化时重建，翻页不重排
+    const key = filter + '|' + order + '|' + (this.state.deckTick || 0);
+    if (key !== this.state.deckKey) {
+      const cards0 = await window.lcAPI.listCards(filter === 'all' ? {} : { sourceId: filter });
+      this.state.cards = this.orderCards(cards0);
+      this.state.deckKey = key;
+      this.state.idx = 0;
+      if (this.state.focusCard) {
+        const i = this.state.cards.findIndex(c => c.id === this.state.focusCard);
+        if (i >= 0) this.state.idx = i;
+        this.state.focusCard = null;
+      }
     }
+    const cards = this.state.cards;
     if (this.state.idx >= cards.length) this.state.idx = 0;
     const config = await window.lcAPI.getConfig();
     this.state.mode = (config.llm && config.llm.mode) || 'similarity';
@@ -263,13 +283,20 @@ window.PageBawen = {
 
     body.innerHTML = `
       <div class="card">
-        <div class="row spread" style="margin-bottom:12px">
+        <div class="row spread" style="margin-bottom:12px;flex-wrap:wrap">
           <div class="row">
             <label style="margin:0">范围：</label>
             <select id="pfSrc">
               <option value="all" ${filter === 'all' ? 'selected' : ''}>全部（${progress.total}）</option>
               ${sources.map(s => `<option value="${esc(s.id)}" ${filter === s.id ? 'selected' : ''}>${esc(s.name)}（${s.cardCount}）</option>`).join('')}
             </select>
+            <label style="margin:0">出题：</label>
+            <div class="seg" id="pfOrder">
+              <button data-order="random" class="${(this.state.order || 'random') === 'random' ? 'active' : ''}">随机</button>
+              <button data-order="weak" class="${this.state.order === 'weak' ? 'active' : ''}">待复习优先</button>
+              <button data-order="list" class="${this.state.order === 'list' ? 'active' : ''}">原顺序</button>
+            </div>
+            ${(this.state.order || 'random') !== 'list' ? '<button class="btn-sm" data-act="reshuffle">🔀 洗牌</button>' : ''}
           </div>
           <div class="muted">第 <b>${total ? idx + 1 : 0}</b> / ${total} 题</div>
         </div>
@@ -279,7 +306,18 @@ window.PageBawen = {
 
     body.querySelector('#pfSrc').addEventListener('change', async () => {
       this.state.sourceFilter = body.querySelector('#pfSrc').value;
-      this.state.idx = 0;
+      this.state.deckKey = ''; // 重建
+      this.renderPractice(container, body, sources, await window.lcAPI.getBawenProgress());
+    });
+    body.querySelectorAll('#pfOrder button').forEach(b => b.addEventListener('click', async () => {
+      this.state.order = b.dataset.order;
+      this.state.deckKey = ''; // 重建
+      this.renderPractice(container, body, sources, await window.lcAPI.getBawenProgress());
+    }));
+    const sh = body.querySelector('[data-act=reshuffle]');
+    if (sh) sh.addEventListener('click', async () => {
+      this.state.deckTick = (this.state.deckTick || 0) + 1;
+      this.state.deckKey = '';
       this.renderPractice(container, body, sources, await window.lcAPI.getBawenProgress());
     });
 

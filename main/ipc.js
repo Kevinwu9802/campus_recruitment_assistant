@@ -144,8 +144,11 @@ function registerIpc({ win, broadcast, notify }) {
   });
 
   ipcMain.handle('kaoyan:addSourceFile', async (e, filePath) => {
-    try { return await kaoyan.addSourceFile(filePath); }
-    catch (err) { return { ok: false, error: err.message }; }
+    try {
+      return await kaoyan.addSourceFile(filePath, {
+        onProgress: (msg) => { if (ctx && ctx.broadcast) ctx.broadcast('kaoyanProgress', { msg }); },
+      });
+    } catch (err) { return { ok: false, error: err.message }; }
   });
 
   ipcMain.handle('kaoyan:addSourceUrl', async (e, url, opts) => {
@@ -162,8 +165,11 @@ function registerIpc({ win, broadcast, notify }) {
   });
 
   ipcMain.handle('kaoyan:previewSourceFile', async (e, filePath, opts) => {
-    try { return await kaoyan.previewSource(filePath, 'file', opts || {}); }
-    catch (err) { return { ok: false, error: err.message }; }
+    try {
+      return await kaoyan.previewSource(filePath, 'file', Object.assign({}, opts || {}, {
+        onProgress: (msg) => { if (ctx && ctx.broadcast) ctx.broadcast('kaoyanProgress', { msg }); },
+      }));
+    } catch (err) { return { ok: false, error: err.message }; }
   });
   ipcMain.handle('kaoyan:previewSourceUrl', async (e, url, opts) => {
     try {

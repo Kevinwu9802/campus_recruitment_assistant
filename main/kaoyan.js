@@ -164,7 +164,10 @@ function chunkText(text) {
     .replace(/[ \t\u00a0]+/g, ' ')
     .replace(/\r/g, '');
   const lines = clean.split('\n').map(l => l.trim());
-  const filtered = lines.filter(l => !(/^\d{1,4}$/.test(l) && /^\d+$/.test(l))); // 去掉孤立页码
+  const filtered = lines.filter(l =>
+    !(/^\d{1,4}$/.test(l) && /^\d+$/.test(l)) &&          // 孤立页码
+    !/^[\-=*_~··．。\.]{3,}$/.test(l)                       // 装饰分隔线（——、===、*** …）
+  );
   const blocks = [];
   let heading = null;      // 当前小节标题
   let buf = [];            // 当前块内容
@@ -219,19 +222,57 @@ function cleanConfig() {
   return { enabled: cfg.cleanCards !== false, apiKey: require('./meta').getApiKey(), baseUrl: cfg.baseUrl, model: cfg.model };
 }
 
+/** 把长文本按句子/段落边界切成若干段（每段约 maxLen 字符），避免 LLM 截断丢失内容。 */
+function splitIntoChunks(text, maxLen = 6000) {
+  let s = String(text || '');
+  const parts = [];
+  const breaks = ['\n', '。', '？', '！', '；', '.', ' '];
+  while (s.length > maxLen) {
+    let cut = -1;
+    for (const b of breaks) { cut = Math.max(cut, s.lastIndexOf(b, maxLen)); }
+    if (cut < Math.floor(maxLen * 0.4)) cut = maxLen;
+    parts.push(s.slice(0, cut + 1));
+    s = s.slice(cut + 1);
+  }
+  if (s.trim()) parts.push(s);
+  return parts.filter(p => p.replace(/\s+/g, '').length > 40);
+}
+
+/** 按题目去重（题目归一化后相同则只留第一份）。 */
+function dedupeItems(items) {
+  const seen = new Set();
+  const out = [];
+  for (const it of items || []) {
+    const key = String(it.topic || '').toLowerCase().replace(/[^\u3400-\u9fffA-Za-z0-9]/g, '').slice(0, 60);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(it);
+  }
+  return out;
+}
+
 /**
  * 从文本生成知识点卡（优先 LLM 清洗：合并/拆分/补全；失败或无 LLM 时回落到规则切割）。
+ * 大文本会分段清洗并合并去重，避免只处理开头一小段。
  */
-async function cardsFromText(text, source, { pageTitle = '', multi = false, idxOffset = 0 } = {}) {
+async function cardsFromText(text, source, { pageTitle = '', multi = false, idxOffset = 0, onProgress } = {}) {
   const now = new Date().toISOString();
   const cardSource = (multi && pageTitle) ? pageTitle : source.name;
   const cc = cleanConfig();
   let items = null;
   if (cc.enabled && cc.apiKey && cc.baseUrl && cc.model) {
-    try {
-      items = await llm.cleanCards(text);
-      if (!items || !items.length) items = null;
-    } catch (e) { console.warn('[kaoyan] LLM 清洗失败，回落规则切割：', e.message); }
+    const chunks = splitIntoChunks(text);
+    const acc = [];
+    let failed = false;
+    for (let i = 0; i < chunks.length; i++) {
+      if (onProgress) onProgress(`LLM 清洗 ${i + 1}/${chunks.length} 段…`);
+      try {
+        const got = await llm.cleanCards(chunks[i]);
+        if (got && got.length) acc.push(...got);
+      } catch (e) { failed = true; console.warn('[kaoyan] LLM 清洗某段失败：', e.message); }
+    }
+    if (acc.length) items = dedupeItems(acc); // LLM 有产出则用；否则回落规则切割
+    else items = null;
   }
   if (!items) items = chunkText(text).map(b => ({ topic: b.topic, answer: b.content }));
   return items.map((it, i) => ({
@@ -250,7 +291,7 @@ async function cardsFromText(text, source, { pageTitle = '', multi = false, idxO
   }));
 }
 
-async function addSourceFile(filePath) {
+async function addSourceFile(filePath, opts = {}) {
   const name = path.basename(filePath);
   const id = hashId('src|file|' + filePath);
   const { text, format } = await extractFile(filePath);
@@ -260,7 +301,7 @@ async function addSourceFile(filePath) {
     save(d);
   }
   const source = data().sources.find(x => x.id === id);
-  const cards = await cardsFromText(text, source);
+  const cards = await cardsFromText(text, source, { onProgress: opts.onProgress });
   d.cards = d.cards.filter(c => c.sourceId !== id);
   d.cards = d.cards.concat(cards);
   source.cardCount = cards.length;
@@ -330,7 +371,7 @@ async function addSourceUrl(url, opts = {}) {
     if (pi === 0 && skip0) continue;
     const pageTitle = (pg.title || '').split('｜')[0].trim(); // 标题去“｜大厂面试题…”后缀
     if (isNonKnowledgePage(pageTitle)) continue; // 整页非八股（招聘/营销/功能页）→ 丢弃
-    const cards = await cardsFromText(pg.text, source, { pageTitle, multi, idxOffset: allCards.length });
+    const cards = await cardsFromText(pg.text, source, { pageTitle, multi, idxOffset: allCards.length, onProgress: opts.onProgress });
     allCards.push(...cards);
   }
   const now = new Date().toISOString();
@@ -361,7 +402,7 @@ async function previewSource(location, type, opts = {}) {
     const name = path.basename(location);
     const { text, format } = await extractFile(location);
     sourceMeta = { id: hashId('src|file|' + location), type: 'file', name, location, format };
-    cards = await cardsFromText(text, sourceMeta);
+    cards = await cardsFromText(text, sourceMeta, { onProgress: opts.onProgress });
   } else {
     const { title, pages } = await extractWeb(location, opts);
     sourceMeta = { id: hashId('src|url|' + location), type: 'url', name: title || location, location, format: 'web', crawl: !!opts.crawl };
@@ -372,7 +413,7 @@ async function previewSource(location, type, opts = {}) {
       if (pi === 0 && skip0) continue;
       const pageTitle = (pg.title || '').split('｜')[0].trim();
       if (isNonKnowledgePage(pageTitle)) continue;
-      cards.push(...await cardsFromText(pg.text, sourceMeta, { pageTitle, multi, idxOffset: cards.length }));
+      cards.push(...await cardsFromText(pg.text, sourceMeta, { pageTitle, multi, idxOffset: cards.length, onProgress: opts.onProgress }));
     }
   }
   const token = hashId('pending|' + Date.now() + '|' + Math.random());
@@ -553,6 +594,7 @@ function progress() {
 
 module.exports = {
   extractFile, extractWeb, chunkText, scoreAnswer, hashId, isJunkCard, cardsFromText,
+  splitIntoChunks, dedupeItems,
   addSourceFile, addSourceUrl, reparseSource, removeSource,
   previewSource, commitPending, discardPending, previewReclean,
   listSources, listCards, getCard, submitAnswer, viewCard, setCardStatus, progress,
