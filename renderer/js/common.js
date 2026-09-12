@@ -136,6 +136,7 @@ function problemRowHtml(item, listBySlug, historyByQid, readonly = false) {
     </div>
     <div class="meta">
       ${item.kind === 'new' ? '<span class="chip kind-new">新题</span>' : '<span class="chip kind-review">复习</span>'}
+      ${item.paidOnly ? '<span class="chip" style="color:var(--orange);border-color:rgba(251,191,36,.5)">会员</span>' : ''}
       ${diff ? `<span class="chip diff-${diff}">${DIFF_CN[diff] || diff}</span>` : ''}
       ${tags.slice(0, 3).map(t => `<span class="chip tag">${esc(t)}</span>`).join('')}
       ${listName ? `<span class="chip src">📚${esc(listName)}</span>` : ''}

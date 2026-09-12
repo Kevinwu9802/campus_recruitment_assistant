@@ -55,8 +55,8 @@ console.log('[1] store 初始化于', tmpDir);
     console.log(`[6] ${d} (${d.slice(5,7)}月) 只读=${!!plan.readonly} 休息=${plan.rest} 新${kinds.new || 0} 复习${kinds.review || 0} 链接ok=${hasSlug} 备注[${plan.note || '正常'}]`);
   }
 
-  // 状态流转测试（仅今日 2026-09-01 可编辑）
-  const d0 = '2026-09-01';
+  // 状态流转测试（仅今日可编辑）
+  const d0 = scheduler.todayStr();
   const plan0 = scheduler.getPlan(d0);
   const first = plan0.items[0];
   if (first) {
@@ -68,8 +68,9 @@ console.log('[1] store 初始化于', tmpDir);
   }
 
   // 只读校验：过去/未来日期不可写（setAllStatus 仅作用于已提交计划；未提交则报“不存在”）
-  const futurePlan = scheduler.getPlan('2026-09-15');
-  console.log('[7c] 未来日期(9-15) 只读=', futurePlan.readonly, '| 是否提交到磁盘:', !!(store.get('plan')['2026-09-15']));
+  const futureDs = scheduler.todayStr().slice(0,8)+'15';
+  const futurePlan = scheduler.getPlan(futureDs);
+  console.log('[7c] 未来日期 只读=', futurePlan.readonly, '| 是否提交到磁盘:', !!((store.get('plan')||{})[futureDs]));
   const beforeStart = scheduler.getPlan('2026-08-31');
   console.log('[7d] 开始日期前(8-31) notBeforeStart=', beforeStart.notBeforeStart, '| 备注:', beforeStart.note);
 

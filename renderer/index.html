@@ -18,10 +18,11 @@
       </div>
       <nav class="nav" id="nav">
         <a class="nav-item" data-route="today" href="#/today"><span class="nav-ico">📅</span>今日计划</a>
+        <a class="nav-item" data-route="bawen" href="#/bawen"><span class="nav-ico">📘</span>八股文</a>
+        <a class="nav-item" data-route="jobs" href="#/jobs"><span class="nav-ico">🎯</span>校招看板</a>
         <a class="nav-item" data-route="calendar" href="#/calendar"><span class="nav-ico">🗓️</span>月历排布</a>
         <a class="nav-item" data-route="lists" href="#/lists"><span class="nav-ico">📚</span>题单管理</a>
         <a class="nav-item" data-route="history" href="#/history"><span class="nav-ico">🧠</span>记忆库</a>
-        <a class="nav-item" data-route="bawen" href="#/bawen"><span class="nav-ico">📘</span>八股文</a>
         <a class="nav-item" data-route="stats" href="#/stats"><span class="nav-ico">📊</span>统计</a>
         <a class="nav-item" data-route="timer" href="#/timer"><span class="nav-ico">⏱️</span>专注计时</a>
         <a class="nav-item" data-route="settings" href="#/settings"><span class="nav-ico">⚙️</span>设置</a>
@@ -32,6 +33,9 @@
         </div>
         <div class="status-line" id="fetchStatus" title="题单抓取状态">
           <span class="dot dot-blue" id="fetchDot"></span><span id="fetchText">题单未抓取</span>
+        </div>
+        <div class="status-line hide" id="kaoyanStatus" title="八股抓取状态（切换页面也会继续）">
+          <span class="dot busy" id="kaoyanDot"></span><span id="kaoyanText">—</span>
         </div>
       </div>
     </aside>
@@ -46,6 +50,7 @@
   <script src="js/pages/lists.js"></script>
   <script src="js/pages/history.js"></script>
   <script src="js/pages/bawen.js"></script>
+  <script src="js/pages/jobs.js"></script>
   <script src="js/pages/stats.js"></script>
   <script src="js/pages/timer.js"></script>
   <script src="js/pages/settings.js"></script>

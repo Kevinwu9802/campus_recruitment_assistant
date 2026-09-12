@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('lcAPI', {
   getLists: () => ipcRenderer.invoke('lists:get'),
   toggleList: (slug, enabled) => ipcRenderer.invoke('lists:toggle', slug, enabled),
   removeList: (slug) => ipcRenderer.invoke('lists:remove', slug),
+  getPool: () => ipcRenderer.invoke('pool:get'),
+  fetchPool: () => ipcRenderer.invoke('pool:fetchAll'),
 
   // 计划
   getPlan: (dateStr) => ipcRenderer.invoke('plan:get', dateStr),
@@ -28,6 +30,8 @@ contextBridge.exposeInMainWorld('lcAPI', {
   // 记忆库
   getHistory: () => ipcRenderer.invoke('history:get'),
   updateHistoryMeta: (qid, patch) => ipcRenderer.invoke('history:updateMeta', qid, patch),
+  markLearned: (qids) => ipcRenderer.invoke('history:markLearned', qids),
+  purgePaid: () => ipcRenderer.invoke('history:purgePaid'),
   deleteHistory: (qid) => ipcRenderer.invoke('history:delete', qid),
 
   // 统计
@@ -46,6 +50,7 @@ contextBridge.exposeInMainWorld('lcAPI', {
   previewSourceUrl: (url, opts) => ipcRenderer.invoke('kaoyan:previewSourceUrl', url, opts),
   commitPending: (token, acceptedIdx) => ipcRenderer.invoke('kaoyan:commitPending', token, acceptedIdx),
   discardPending: (token) => ipcRenderer.invoke('kaoyan:discardPending', token),
+  listPending: () => ipcRenderer.invoke('kaoyan:listPending'),
   previewReclean: (sourceId) => ipcRenderer.invoke('kaoyan:previewReclean', sourceId),
   reparseSource: (id) => ipcRenderer.invoke('kaoyan:reparseSource', id),
   removeSource: (id) => ipcRenderer.invoke('kaoyan:removeSource', id),
@@ -61,6 +66,11 @@ contextBridge.exposeInMainWorld('lcAPI', {
   getLlmKey: () => ipcRenderer.invoke('llm:getKey'),
   setLlmKey: (key) => ipcRenderer.invoke('llm:setKey', key),
   testLlm: (cfg) => ipcRenderer.invoke('llm:test', cfg),
+
+  // 校招看板
+  importJobs: () => ipcRenderer.invoke('jobs:pickAndImport'),
+  getJobsDashboard: () => ipcRenderer.invoke('jobs:get'),
+  clearJobs: () => ipcRenderer.invoke('jobs:clear'),
 
   // 配置
   getConfig: () => ipcRenderer.invoke('config:get'),

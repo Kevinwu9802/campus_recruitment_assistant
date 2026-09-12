@@ -52,6 +52,11 @@ window.PageBawen = {
 
   async consumePreview(prev, label) {
     if (!prev || prev.ok === false) { toast('解析失败：' + ((prev && prev.error) || '未知'), 'error'); return; }
+    // 用户已切到别的页面：不打断，保留「待确认」，回到八股文页再确认即可
+    if (!String(location.hash || '').startsWith('#/bawen')) {
+      toast(`抓取完成（${prev.total} 条），已存入「待确认」— 回到八股文页可确认导入`, 'success', 6000);
+      return;
+    }
     const r = await this.showPreview(prev);
     if (r.acceptedIdx) {
       const c = await window.lcAPI.commitPending(prev.token, r.acceptedIdx);
@@ -66,7 +71,18 @@ window.PageBawen = {
     if (this.offKp) { this.offKp(); this.offKp = null; }
     const cfg = await window.lcAPI.getConfig();
     const cleanDef = (cfg.llm && cfg.llm.cleanCards !== false);
+    const pend = await window.lcAPI.listPending();
     body.innerHTML = `
+      ${pend && pend.length ? `<div class="card" style="border-color:rgba(79,140,255,.55)">
+        <h3>⏳ 待确认导入 <span class="muted" style="font-weight:400">（抓取已完成，确认后写入题库）</span></h3>
+        ${pend.map(p => `<div class="row spread" style="padding:7px 0;border-bottom:1px solid var(--line)">
+          <span>${esc(p.name)} · <b>${p.total}</b> 条知识点</span>
+          <span class="row">
+            <button class="btn-sm btn-primary" data-act="confirmPend" data-token="${esc(p.token)}">✅ 确认导入</button>
+            <button class="btn-sm" data-act="discardPend" data-token="${esc(p.token)}">放弃</button>
+          </span>
+        </div>`).join('')}
+      </div>` : ''}
       <div class="card">
         <h3>➕ 添加八股来源 <span class="muted" style="font-weight:400">（不限数量）</span></h3>
         <div class="row">
@@ -178,6 +194,16 @@ window.PageBawen = {
       this.renderSources(body, await window.lcAPI.listSources());
     });
 
+    body.querySelectorAll('[data-act=confirmPend]').forEach(b => b.addEventListener('click', async () => {
+      const c = await window.lcAPI.commitPending(b.dataset.token, null);
+      toast(`已导入 ${c.cardCount} 个知识点`, 'success');
+      this.renderSources(body, await window.lcAPI.listSources());
+    }));
+    body.querySelectorAll('[data-act=discardPend]').forEach(b => b.addEventListener('click', async () => {
+      await window.lcAPI.discardPending(b.dataset.token);
+      toast('已放弃该次抓取', 'info');
+      this.renderSources(body, await window.lcAPI.listSources());
+    }));
     body.querySelectorAll('[data-act=reparse]').forEach(b => b.addEventListener('click', async () => {
       const clean = body.querySelector('#cleanCards').checked;
       if (clean) {
@@ -211,9 +237,20 @@ window.PageBawen = {
 
   async renderProgress(body, progress) {
     let lowList = [];
+    let catStats = [];
     try {
       const cards = await window.lcAPI.listCards({});
       lowList = cards.filter(c => c.status === 'unknown').slice(0, 10);
+      // 按分类统计（来自抓取网页的侧边栏分类）
+      const m = {};
+      for (const c of cards) {
+        const k = c.category || '未分类';
+        if (!m[k]) m[k] = { name: k, total: 0, known: 0, unknown: 0 };
+        m[k].total++;
+        if (c.status === 'known') m[k].known++;
+        else if (c.status === 'unknown') m[k].unknown++;
+      }
+      catStats = Object.values(m).sort((a, b) => b.total - a.total);
     } catch (e) {}
     body.innerHTML = `
       <div class="stat-grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
@@ -224,6 +261,17 @@ window.PageBawen = {
         <div class="stat-card purple"><div class="v">${progress.tried}</div><div class="l">已作答</div></div>
         <div class="stat-card"><div class="v">${progress.avg}</div><div class="l">平均分</div></div>
       </div>
+      ${catStats.length > 1 ? `<div class="card">
+        <h3>📂 按分类学习进度 <span class="muted" style="font-weight:400">（来自抓取网页的侧边栏分类）</span></h3>
+        ${catStats.map(c => `<div class="bar-row">
+          <span class="bar-label" title="${esc(c.name)}">${esc(c.name)}</span>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.max(3, (c.known / c.total) * 100)}%;background:var(--green)"></div></div>
+          <span class="bar-val">${c.known}/${c.total}</span>
+          <span class="muted" style="width:70px;font-size:11px">待复习 ${c.unknown}</span>
+        </div>`).join('')}
+        <div class="muted" style="margin-top:8px">练习页可按「分类」筛选，逐个板块攻克。</div>
+      </div>` : ''}
+
       <div class="card">
         <h3>📌 待复习（答错/低分，考前重点看）</h3>
         ${lowList.length ? lowList.map(c => `
@@ -260,10 +308,13 @@ window.PageBawen = {
   async renderPractice(container, body, sources, progress) {
     const filter = this.state.sourceFilter;
     const order = this.state.order || 'random';
-    // 出题队列：仅当 范围/顺序/洗牌 变化时重建，翻页不重排
-    const key = filter + '|' + order + '|' + (this.state.deckTick || 0);
+    const cat = this.state.category || '';
+    // 出题队列：仅当 范围/分类/顺序/洗牌 变化时重建，翻页不重排
+    const key = filter + '|' + order + '|' + cat + '|' + (this.state.deckTick || 0);
     if (key !== this.state.deckKey) {
-      const cards0 = await window.lcAPI.listCards(filter === 'all' ? {} : { sourceId: filter });
+      const all = await window.lcAPI.listCards(filter === 'all' ? {} : { sourceId: filter });
+      this.state.cats = [...new Set(all.map(c => c.category).filter(Boolean))].sort();
+      const cards0 = cat ? all.filter(c => (c.category || '') === cat) : all;
       this.state.cards = this.orderCards(cards0);
       this.state.deckKey = key;
       this.state.idx = 0;
@@ -290,6 +341,11 @@ window.PageBawen = {
               <option value="all" ${filter === 'all' ? 'selected' : ''}>全部（${progress.total}）</option>
               ${sources.map(s => `<option value="${esc(s.id)}" ${filter === s.id ? 'selected' : ''}>${esc(s.name)}（${s.cardCount}）</option>`).join('')}
             </select>
+            <label style="margin:0">分类：</label>
+            <select id="pfCat">
+              <option value="" ${!cat ? 'selected' : ''}>全部分类</option>
+              ${(this.state.cats || []).map(c => `<option value="${esc(c)}" ${cat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+            </select>
             <label style="margin:0">出题：</label>
             <div class="seg" id="pfOrder">
               <button data-order="random" class="${(this.state.order || 'random') === 'random' ? 'active' : ''}">随机</button>
@@ -307,6 +363,12 @@ window.PageBawen = {
     body.querySelector('#pfSrc').addEventListener('change', async () => {
       this.state.sourceFilter = body.querySelector('#pfSrc').value;
       this.state.deckKey = ''; // 重建
+      this.renderPractice(container, body, sources, await window.lcAPI.getBawenProgress());
+    });
+    const catSel = body.querySelector('#pfCat');
+    if (catSel) catSel.addEventListener('change', async () => {
+      this.state.category = catSel.value;
+      this.state.deckKey = '';
       this.renderPractice(container, body, sources, await window.lcAPI.getBawenProgress());
     });
     body.querySelectorAll('#pfOrder button').forEach(b => b.addEventListener('click', async () => {
@@ -334,7 +396,7 @@ window.PageBawen = {
       <div class="qitem" style="border:none;background:transparent;padding:0;margin:0 0 12px">
         <div class="qtitle">
           <div style="font-size:16px;font-weight:700;line-height:1.5">❓ ${esc(card.topic)}</div>
-          <span class="muted" style="font-size:12px">📚 ${esc(card.sourceName)}${card.location ? ' · ' + esc(card.location) : ''}</span>
+          <span class="muted" style="font-size:12px">${card.category ? `📂 <b>${esc(card.category)}</b>${card.subCategory ? ' › ' + esc(card.subCategory) : ''} · ` : ''}📚 ${esc(card.sourceName)}${card.location ? ' · ' + esc(card.location) : ''}</span>
         </div>
         ${statusChip}
       </div>

@@ -7,6 +7,7 @@
     lists: { title: '题单管理', page: window.PageLists },
     history: { title: '记忆库', page: window.PageHistory },
     bawen: { title: '八股文', page: window.PageBawen },
+    jobs: { title: '校招看板', page: window.PageJobs },
     stats: { title: '统计', page: window.PageStats },
     timer: { title: '专注计时', page: window.PageTimer },
     settings: { title: '设置', page: window.PageSettings },
@@ -92,8 +93,33 @@
     APP.applyTheme(theme);
   };
 
+  // 八股抓取全局进度（切换页面也继续抓取，进度始终可见）
+  function initKaoyanStatus() {
+    const line = document.getElementById('kaoyanStatus');
+    const dot = document.getElementById('kaoyanDot');
+    const txt = document.getElementById('kaoyanText');
+    if (!line) return;
+    let idleTimer = null;
+    window.lcAPI.onKaoyanProgress((d) => {
+      const msg = (d && d.msg) || '';
+      if (/^完成/.test(msg)) {
+        txt.textContent = msg;
+        dot.classList.remove('busy');
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => line.classList.add('hide'), 6000);
+        return;
+      }
+      line.classList.remove('hide');
+      dot.classList.add('busy');
+      txt.textContent = msg || '八股抓取中…';
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => line.classList.add('hide'), 15000);
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     initTheme();
+    initKaoyanStatus();
     initStatus();
     if (!location.hash) location.hash = '#/today';
     route();

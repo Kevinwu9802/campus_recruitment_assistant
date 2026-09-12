@@ -255,7 +255,7 @@ function dedupeItems(items) {
  * 从文本生成知识点卡（优先 LLM 清洗：合并/拆分/补全；失败或无 LLM 时回落到规则切割）。
  * 大文本会分段清洗并合并去重，避免只处理开头一小段。
  */
-async function cardsFromText(text, source, { pageTitle = '', multi = false, idxOffset = 0, onProgress } = {}) {
+async function cardsFromText(text, source, { pageTitle = '', category = '', subCategory = '', multi = false, idxOffset = 0, onProgress } = {}) {
   const now = new Date().toISOString();
   const cardSource = (multi && pageTitle) ? pageTitle : source.name;
   const cc = cleanConfig();
@@ -283,6 +283,8 @@ async function cardsFromText(text, source, { pageTitle = '', multi = false, idxO
     sourceName: cardSource,
     location: source.location || source.name,
     sourceType: source.type,
+    category: category || source.category || '',
+    subCategory: subCategory || '',
     createdAt: now,
     status: 'new', // new / known / unknown
     attempts: 0,
@@ -371,7 +373,7 @@ async function addSourceUrl(url, opts = {}) {
     if (pi === 0 && skip0) continue;
     const pageTitle = (pg.title || '').split('｜')[0].trim(); // 标题去“｜大厂面试题…”后缀
     if (isNonKnowledgePage(pageTitle)) continue; // 整页非八股（招聘/营销/功能页）→ 丢弃
-    const cards = await cardsFromText(pg.text, source, { pageTitle, multi, idxOffset: allCards.length, onProgress: opts.onProgress });
+    const cards = await cardsFromText(pg.text, source, { pageTitle, category: pg.category, subCategory: pg.subCategory, multi, idxOffset: allCards.length, onProgress: opts.onProgress });
     allCards.push(...cards);
   }
   const now = new Date().toISOString();
@@ -413,7 +415,7 @@ async function previewSource(location, type, opts = {}) {
       if (pi === 0 && skip0) continue;
       const pageTitle = (pg.title || '').split('｜')[0].trim();
       if (isNonKnowledgePage(pageTitle)) continue;
-      cards.push(...await cardsFromText(pg.text, sourceMeta, { pageTitle, multi, idxOffset: cards.length, onProgress: opts.onProgress }));
+      cards.push(...await cardsFromText(pg.text, sourceMeta, { pageTitle, category: pg.category, subCategory: pg.subCategory, multi, idxOffset: cards.length, onProgress: opts.onProgress }));
     }
   }
   const token = hashId('pending|' + Date.now() + '|' + Math.random());
@@ -455,6 +457,15 @@ function commitPending(token, acceptedIdx) {
 }
 
 function discardPending(token) { pending.delete(token); return true; }
+
+/** 列出所有「已解析完、待用户确认导入」的会话（切换页面后仍可回来确认） */
+function listPending() {
+  return [...pending.entries()].map(([token, p]) => ({
+    token,
+    name: p.sourceMeta ? p.sourceMeta.name : '',
+    total: (p.cards || []).length,
+  }));
+}
 
 /** 批量清洗已有卡片：对某来源的现有卡片，把它们的 题目+答案 打包交给 LLM 重组，预览后替换。 */
 async function previewReclean(sourceId) {
@@ -596,6 +607,6 @@ module.exports = {
   extractFile, extractWeb, chunkText, scoreAnswer, hashId, isJunkCard, cardsFromText,
   splitIntoChunks, dedupeItems,
   addSourceFile, addSourceUrl, reparseSource, removeSource,
-  previewSource, commitPending, discardPending, previewReclean,
+  previewSource, commitPending, discardPending, previewReclean, listPending,
   listSources, listCards, getCard, submitAnswer, viewCard, setCardStatus, progress,
 };

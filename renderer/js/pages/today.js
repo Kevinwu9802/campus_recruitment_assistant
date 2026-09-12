@@ -94,6 +94,16 @@ window.PageToday = {
       `}`;
     }
 
+    // 会员专享题提示（历史计划里可能已排入）
+    const paidItems = plan.items.filter(i => i.paidOnly);
+    const paidBanner = paidItems.length
+      ? `<div class="card" style="border-color:rgba(251,191,36,.5)">
+          <div class="row spread">
+            <span>⚠️ 该日有 <b style="color:var(--orange)">${paidItems.length}</b> 道 LeetCode 会员专享题（${paidItems.map(i => i.qid).join('、')}），没有会员可能做不了。</span>
+            <button class="btn-sm btn-danger" data-act="purgePaid">🧹 一键移除会员题</button>
+          </div>
+        </div>` : '';
+
     // 顶部提示横幅
     let banner = '';
     if (plan.notBeforeStart) {
@@ -118,6 +128,7 @@ window.PageToday = {
       </div>
 
       ${banner}
+      ${paidBanner}
       ${content}
     `;
 
@@ -133,6 +144,16 @@ window.PageToday = {
         else if (act === 'next') locationset(date, 1);
         else location.hash = '#/today';
       });
+    });
+
+    // 会员题一键移除（任何日期都可执行）
+    const pb = root.querySelector('[data-act=purgePaid]');
+    if (pb) pb.addEventListener('click', async () => {
+      if (!(await confirmDlg('移除所有会员题', '将从记忆库、每日计划与题目池中移除所有会员专享题。确定？', '移除'))) return;
+      const r = await window.lcAPI.purgePaid();
+      toast(`已移除：记忆库 ${r.removedHistory} 道、计划 ${r.removedPlanItems} 条、题目池 ${r.removedPool} 道`, 'success');
+      APP.metaCache.invalidate();
+      this.render(root, { date });
     });
 
     // 仅当天可编辑：其余日期（含未来）状态按钮为 disabled，无需绑定

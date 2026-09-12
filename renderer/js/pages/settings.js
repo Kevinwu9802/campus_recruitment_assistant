@@ -45,6 +45,12 @@ window.PageSettings = {
           <input type="date" id="cfgStart" value="${esc(config.scheduleStart || '2026-09-01')}" style="width:180px" />
           <div class="hint">早于该日期的日子不生成、不排期，仅作只读查看（如需改，先清空旧计划）。</div>
         </div>
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="skipPaid" ${config.skipPaidOnly !== false ? 'checked' : ''} />
+            跳过 LeetCode 会员专享题（没有会员时请勾选，避免排到做不了的题）
+          </label>
+        </div>
         <div class="row">
           <span class="muted">userSlug：<b class="mono">${esc(config.userSlug || '未设置')}</b></span>
           <span class="muted">最近抓取：${fmtTs(config.lastFetchAt)}</span>
@@ -226,6 +232,7 @@ window.PageSettings = {
       const cfg = {
         profileUrl: container.querySelector('#cfgProfileUrl').value.trim(),
         scheduleStart: container.querySelector('#cfgStart').value || '2026-09-01',
+        skipPaidOnly: container.querySelector('#skipPaid') ? container.querySelector('#skipPaid').checked : true,
         fetch: {
           enabled: container.querySelector('#fetchEnabled').checked,
           time: container.querySelector('#fetchTime').value || '08:00',
@@ -242,6 +249,8 @@ window.PageSettings = {
 
     container.querySelector('#cfgProfileUrl').addEventListener('change', saveCommon);
     container.querySelector('#cfgStart').addEventListener('change', saveCommon);
+    const skipPaidEl = container.querySelector('#skipPaid');
+    if (skipPaidEl) skipPaidEl.addEventListener('change', saveCommon);
 
     container.querySelector('#planYear').addEventListener('change', () => {
       const y = Number(container.querySelector('#planYear').value);

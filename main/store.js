@@ -15,6 +15,8 @@ const FILES = {
   plan: 'plan.json',
   sessions: 'sessions.json',
   kaoyan: 'kaoyan.json',
+  pool: 'pool.json',
+  jobs: 'jobs.json',
   syncState: 'syncState.json',
 };
 
@@ -30,6 +32,7 @@ function defaultConfig() {
     profileUrl: '',                  // 首次由用户自行填写（不打包任何个人信息）
     userSlug: '',
     scheduleStart: '2026-09-01', // 计划开始日期（此前的日期不生成题单）
+    skipPaidOnly: true,          // 跳过 LeetCode 会员专享题（无会员时勾选）
     listEnabled: {},            // slug -> true/false，null 表示全部启用
     monthPlans: {},             // 'YYYY-MM' -> MonthPlan，缺省回退到 getMonthPlanDefault
     restDates: {},              // 'YYYY-MM-DD' -> true(休息) / false(强制刷题)

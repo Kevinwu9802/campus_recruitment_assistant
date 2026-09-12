@@ -161,6 +161,7 @@ function itemOf(qid, kind, listSlug, q, h) {
     translatedTitle: (qq && qq.translatedTitle) || String(qid),
     title: (qq && qq.title) || '',
     difficulty: (qq && qq.difficulty) || '',
+    paidOnly: !!(qq && qq.paidOnly),
     tags,
   };
 }
@@ -192,25 +193,42 @@ function computePlan(dateStr) {
   };
   if (rest) { base.note = '休息日，不安排刷题'; return { plan: base }; }
 
-  // ---- 新题池：启用题单中从未排期、未掌握的题 ----
+  // ---- 语义：题单 = 复习清单；新题 = 不在题单、但知识点命中任一题单标签的 LeetCode 题 ----
   const enLists = enabledLists(config, lists);
-  const qmap = allQuestionsMap(enLists);
-  const byTag = new Map();
-  for (const [qid, { q, listSlug }] of qmap) {
-    const h = history.questions[qid];
-    if (h && (h.timesScheduled > 0 || h.timesCompleted > 0)) continue; // 已排过 → 复习
-    if (h && h.mastered) continue;                                     // 已掌握
-    const primary = (h && h.primaryTag) || (q.tags && q.tags.length ? q.tags[0].nameTranslated : '未分类');
-    if (!byTag.has(primary)) byTag.set(primary, []);
-    byTag.get(primary).push({ qid, q, primary, listSlug });
+  const listQmap = allQuestionsMap(enLists);        // 题单题目（复习池）
+  const listQids = new Set(listQmap.keys());
+
+  // 题单知识点集合
+  const tagSet = new Set();
+  for (const { q } of listQmap.values()) for (const t of (q.tags || [])) tagSet.add(t.nameTranslated);
+
+  // ---- 新题池：LeetCode 题目池中 不在题单 && 知识点命中 && 未排期/未掌握 ----
+  const pool = (store.get('pool') || {}).problems || [];
+  const skipPaid = config.skipPaidOnly !== false; // 默认跳过会员专享题
+  const baseTag = (p) => (p.tags || []).find(t => tagSet.has(t)) || (p.tags || [])[0] || '未分类';
+  const newCandidates = [];
+  for (const p of pool) {
+    if (listQids.has(p.frontendId)) continue;                               // 在题单 → 复习
+    if (skipPaid && p.paidOnly) continue;                                   // 会员专享题 → 跳过
+    const h = history.questions[p.frontendId];
+    if (h && (h.timesScheduled > 0 || h.timesCompleted > 0 || h.mastered)) continue; // 已做过/掌握
+    if (!(p.tags || []).some(t => tagSet.has(t))) continue;                // 知识点未命中题单
+    newCandidates.push({
+      qid: p.frontendId,
+      q: { titleSlug: p.titleSlug, translatedTitle: p.titleCn || p.title, title: p.title, difficulty: p.difficulty, tags: (p.tags || []).map(t => ({ nameTranslated: t })) },
+      primary: baseTag(p),
+      listSlug: '',
+    });
   }
-  // 组内随机 + 按难度（中等优先）稳定排序
+  const byTag = new Map();
+  for (const it of newCandidates) {
+    const primary = it.primary;
+    if (!byTag.has(primary)) byTag.set(primary, []);
+    byTag.get(primary).push(it);
+  }
   const sortByDiff = (a, b) => (DIFF_ORDER[a.q.difficulty] ?? 3) - (DIFF_ORDER[b.q.difficulty] ?? 3);
-  const groups = [...byTag.entries()].map(([tag, items]) => ({
-    tag, items: shuffle(items, rnd).sort(sortByDiff),
-  }));
-  const shuffledGroups = shuffle(groups, rnd); // 每天知识点的覆盖顺序不同
-  // 轮转选取
+  const groups = [...byTag.entries()].map(([tag, items]) => ({ tag, items: shuffle(items, rnd).sort(sortByDiff) }));
+  const shuffledGroups = shuffle(groups, rnd);
   const newTarget = randInt(rnd, mp.newMin, mp.newMax);
   const pickedNew = [];
   const chosenQids = new Set();
@@ -232,22 +250,20 @@ function computePlan(dateStr) {
     if (!took) break; // 新题池耗尽
   }
 
-  // ---- 复习池：已排期过的题，按“离上次复习最久”优先 ----
-  const reviewPool = [];
-  for (const [qid, h] of Object.entries(history.questions)) {
-    if (chosenQids.has(qid)) continue;              // 同一天不重复
-    if (h.mastered) continue;
-    if (h.timesScheduled <= 0 && h.timesCompleted <= 0) continue;
-    if (h.lastScheduledDate === dateStr || h.lastReviewedDate === dateStr) continue; // 今天已安排过
-    reviewPool.push(h);
+  // ---- 复习池：题单题目，按“离上次复习最久”优先（同级随机） ----
+  let reviewPool = [];
+  for (const [qid, { q, listSlug }] of listQmap) {
+    if (chosenQids.has(qid)) continue;              // 同一天不与新题重复
+    const h = history.questions[qid];
+    if (h && h.mastered) continue;
+    if (skipPaid && q.paidOnly) continue;                                   // 会员专享题 → 跳过
+    if (h && (h.lastScheduledDate === dateStr || h.lastReviewedDate === dateStr)) continue; // 今天已安排过
+    reviewPool.push({ qid, q, listSlug, h: h || {} });
   }
-  reviewPool.sort((a, b) => {
-    const da = new Date(a.lastReviewedDate || a.lastScheduledDate || '1970-01-01').getTime();
-    const db = new Date(b.lastReviewedDate || b.lastScheduledDate || '1970-01-01').getTime();
-    if (da !== db) return da - db;
-    const ca = a.timesCompleted, cb = b.timesCompleted;
-    if (ca !== cb) return ca - cb;
-    return a.timesScheduled - b.timesScheduled;
+  reviewPool = shuffle(reviewPool, rnd).sort((a, b) => {
+    const da = new Date(a.h.lastReviewedDate || a.h.lastScheduledDate || '1970-01-01').getTime();
+    const db = new Date(b.h.lastReviewedDate || b.h.lastScheduledDate || '1970-01-01').getTime();
+    return da - db; // 稳定排序：未复习过的（无日期）优先，同级保持随机
   });
   const reviewTarget = randInt(rnd, mp.reviewMin, mp.reviewMax);
   const pickedReview = reviewPool.slice(0, reviewTarget);
@@ -256,15 +272,16 @@ function computePlan(dateStr) {
   const items = [];
   for (const it of pickedNew) {
     const h0 = history.questions[it.qid];
-    items.push(itemOf(it.qid, 'new', it.listSlug || (h0 && h0.lists && h0.lists[0]), it.q, h0));
+    items.push(itemOf(it.qid, 'new', '', it.q, h0));
   }
-  for (const h of pickedReview) {
-    items.push(itemOf(h.frontendId, 'review', h.lists && h.lists[0], null, h));
+  for (const rv of pickedReview) {
+    items.push(itemOf(rv.qid, 'review', rv.listSlug, rv.q, rv.h));
   }
   base.newCount = pickedNew.length;
   base.reviewCount = pickedReview.length;
   base.items = items;
-  if (qmap.size === 0) { base.note = '尚未抓取到题单数据，请先到「题单管理」抓取'; return { plan: base, empty: true }; }
+  if (listQmap.size === 0) { base.note = '尚未抓取到题单数据，请先到「题单管理」抓取'; return { plan: base, empty: true }; }
+  if (pool.length === 0) base.note += '尚未抓取题目池（新题候选来自 LeetCode 题目池，请先在「题单管理」抓取）；';
   if (pickedNew.length < newTarget) base.note += `新题池不足（想要 ${newTarget}，实际 ${pickedNew.length}）；`;
   if (pickedReview.length < reviewTarget) base.note += `复习池不足（想要 ${reviewTarget}，实际 ${pickedReview.length}）；`;
   base.note = base.note.replace(/；$/, '');
@@ -278,8 +295,35 @@ function commitPlan(dateStr, plan) {
   const now = new Date().toISOString();
   let registered = 0;
   for (const it of plan.items) {
-    const h = history.questions[it.qid];
-    if (h) { h.timesScheduled = (h.timesScheduled || 0) + 1; h.lastScheduledDate = dateStr; registered++; }
+    let h = history.questions[it.qid];
+    if (!h) {
+      // 来自「题目池」的新题不在题单里，首次排期时补建记忆库条目（否则会天天重复出现）
+      h = history.questions[it.qid] = {
+        frontendId: String(it.qid),
+        title: it.title || '',
+        translatedTitle: it.translatedTitle || String(it.qid),
+        titleSlug: it.titleSlug || '',
+        difficulty: it.difficulty || '',
+        paidOnly: !!it.paidOnly,
+        tags: it.tags || [],
+        primaryTag: (it.tags && it.tags[0]) || '未分类',
+        firstSeenAt: now,
+        lastSeenAt: now,
+        timesScheduled: 0,
+        lastScheduledDate: null,
+        timesCompleted: 0,
+        lastCompletedDate: null,
+        lastReviewedDate: null,
+        mastered: false,
+        note: '',
+        lists: [],
+        fromPool: true,
+      };
+    }
+    if (it.paidOnly) h.paidOnly = true;
+    h.timesScheduled = (h.timesScheduled || 0) + 1;
+    h.lastScheduledDate = dateStr;
+    registered++;
   }
   history.updatedAt = now;
   store.set('history', history);
@@ -296,11 +340,35 @@ function commitPlan(dateStr, plan) {
  *  - 未来日期：只读预览（纯计算、不提交、不改动记忆库）。
  *  取消/设置休息日会重新计算该天。
  */
+/** 会员题号集合（来自题目池 + 记忆库标记），用于回填老计划。 */
+function paidQidSet() {
+  const set = new Set();
+  const pool = (store.get('pool') || {}).problems || [];
+  for (const p of pool) if (p.paidOnly) set.add(String(p.frontendId));
+  const hist = (store.get('history') || {}).questions || {};
+  for (const [qid, h] of Object.entries(hist)) if (h && h.paidOnly) set.add(String(qid));
+  return set;
+}
+
+/** 回填计划项的 paidOnly 字段，使早期生成的计划也能正确显示「会员」标记。返回是否有改动 */
+function annotatePlan(plan, paidSet) {
+  if (!plan || !Array.isArray(plan.items) || !plan.items.length) return false;
+  const set = paidSet || paidQidSet();
+  let changed = false;
+  for (const it of plan.items) {
+    const isPaid = set.has(String(it.qid));
+    if (it.paidOnly !== isPaid) { it.paidOnly = isPaid; changed = true; }
+    else if (it.paidOnly === undefined) { it.paidOnly = isPaid; changed = true; }
+  }
+  return changed;
+}
+
 function getPlan(dateStr) {
   const config = store.get('config') || {};
   const start = config.scheduleStart || '2026-09-01';
   const planFile = store.get('plan') || {};
   const today = todayStr();
+  const paidSet = paidQidSet();
 
   if (dateStr < start) {
     return { date: dateStr, rest: false, newCount: 0, reviewCount: 0, items: [], note: `计划尚未开始（早于 ${start}）`, readonly: true, notBeforeStart: true };
@@ -313,11 +381,13 @@ function getPlan(dateStr) {
       store.set('plan', planFile);
     } else {
       planFile[dateStr].readonly = dateStr !== today;
+      if (annotatePlan(planFile[dateStr], paidSet)) store.set('plan', planFile); // 回填会员标记并写回
       return planFile[dateStr];
     }
   }
 
   const { plan, empty } = computePlan(dateStr);
+  annotatePlan(plan, paidSet);
   if (dateStr < today && !planFile[dateStr]) {
     // 过去但从未生成过：无记录（不生成）
     return { date: dateStr, rest: plan.rest, newCount: plan.newCount, reviewCount: plan.reviewCount, items: [], note: '该日没有刷题记录', readonly: true };
@@ -392,6 +462,66 @@ function setAllStatus(dateStr, status) {
   store.set('history', history);
   store.set('plan', planFile);
   return { ok: true };
+}
+
+/** 批量把题目标记为「已学过/已做过」——之后不再进“新题池”，只作为复习。 */
+function markLearned(qids) {
+  const history = store.get('history') || { questions: {} };
+  const today = todayStr();
+  let n = 0;
+  for (const qid of qids || []) {
+    const h = history.questions[String(qid)];
+    if (!h) continue;
+    h.timesCompleted = Math.max(1, h.timesCompleted || 0);
+    h.firstCompletedDate = h.firstCompletedDate || today;
+    h.lastCompletedDate = today;
+    h.lastReviewedDate = today;
+    n++;
+  }
+  history.updatedAt = new Date().toISOString();
+  store.set('history', history);
+  return { ok: true, marked: n };
+}
+
+/** 一键移除所有会员专享题：从记忆库删除 + 从已有计划里剔除 + 从题目池里剔除。 */
+function purgePaid() {
+  const history = store.get('history') || { questions: {} };
+  const planFile = store.get('plan') || {};
+  // 先收集所有会员题号（记忆库标记 + 计划里内嵌的标记）
+  const paidQids = new Set();
+  for (const [qid, h] of Object.entries(history.questions)) if (h && h.paidOnly) paidQids.add(String(qid));
+  for (const ds of Object.keys(planFile)) {
+    const plan = planFile[ds];
+    if (plan && Array.isArray(plan.items)) for (const it of plan.items) if (it.paidOnly) paidQids.add(String(it.qid));
+  }
+  let removedHistory = 0;
+  for (const qid of paidQids) { if (history.questions[qid]) { delete history.questions[qid]; removedHistory++; } }
+  history.updatedAt = new Date().toISOString();
+  store.set('history', history);
+
+  let removedPlanItems = 0;
+  for (const ds of Object.keys(planFile)) {
+    const plan = planFile[ds];
+    if (!plan || !Array.isArray(plan.items)) continue;
+    const before = plan.items.length;
+    plan.items = plan.items.filter(it => !(it.paidOnly || paidQids.has(String(it.qid))));
+    if (plan.items.length !== before) {
+      plan.newCount = plan.items.filter(i => i.kind === 'new').length;
+      plan.reviewCount = plan.items.filter(i => i.kind === 'review').length;
+      removedPlanItems += before - plan.items.length;
+    }
+  }
+  store.set('plan', planFile);
+
+  const pool = store.get('pool');
+  let removedPool = 0;
+  if (pool && Array.isArray(pool.problems)) {
+    const before = pool.problems.length;
+    pool.problems = pool.problems.filter(p => !p.paidOnly);
+    removedPool = before - pool.problems.length;
+    if (removedPool) store.set('pool', pool);
+  }
+  return { ok: true, removedHistory, removedPlanItems, removedPool, paidTotal: paidQids.size };
 }
 
 /** 某天计划（不存在则现场生成） */
@@ -472,6 +602,6 @@ function getStats() {
 
 module.exports = {
   reconcileHistory, effectiveMonthPlan, isRestDay,
-  getPlan, regeneratePlan, setRest,
+  getPlan, regeneratePlan, setRest, markLearned, purgePaid,
   setProblemStatus, setAllStatus, updateHistoryMeta, getStats, todayStr,
 };

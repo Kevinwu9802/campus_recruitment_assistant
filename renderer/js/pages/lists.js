@@ -7,6 +7,7 @@ window.PageLists = {
     const data = await window.lcAPI.getLists();
     const config = await window.lcAPI.getConfig();
     const lists = data.lists || [];
+    const pool = await window.lcAPI.getPool();
 
     // 知识点统计（启用题单）
     const tagCount = {};
@@ -41,6 +42,15 @@ window.PageLists = {
             <div id="fetchBar" style="height:100%;width:0;background:var(--accent);transition:width .3s"></div>
           </div>
         </div>
+      </div>
+
+      <div class="card">
+        <h3>🆕 新题候选池 <span class="muted" style="font-weight:400">（<b>新题 = 不在题单、但知识点命中任一题单标签</b>的 LeetCode 题）</span></h3>
+        <div class="row spread">
+          <span class="muted">${pool.count ? `已抓取 ${pool.count} 道候选` : '尚未抓取'}${pool.updatedAt ? ` · ${fmtTs(pool.updatedAt)}` : ''}</span>
+          <button class="btn-sm" data-act="fetchPool">↻ 抓取题目池</button>
+        </div>
+        <div class="muted" style="margin-top:6px">复习 = 你题单里的题；新题从题目池里挑“未被题单收录、且知识点与题单重合”的中等题。</div>
       </div>
 
       <div class="card">
@@ -83,6 +93,7 @@ window.PageLists = {
             ${top.length ? `<div class="row" style="margin-top:8px;gap:4px">${top.slice(0, 4).map(([t, c]) => `<span class="chip tag">${esc(t)} ${c}</span>`).join('')}</div>` : ''}
             <div class="row" style="margin-top:12px">
               <button class="btn-sm" data-act="preview" data-slug="${esc(l.slug)}">👁 预览题目</button>
+              <button class="btn-sm" data-act="learned" data-slug="${esc(l.slug)}" data-name="${esc(l.name)}">✅ 标记已学过</button>
               <button class="btn-sm" data-act="fetchOne" data-slug="${esc(l.slug)}" data-name="${esc(l.name)}">↻ 刷新全部</button>
               <button class="btn-sm btn-danger" data-act="remove" data-slug="${esc(l.slug)}" style="margin-left:auto">删除缓存</button>
             </div>
@@ -129,6 +140,15 @@ window.PageLists = {
       } catch (e) { toast('失败：' + e.message, 'error'); }
     });
 
+    const poolBtn = container.querySelector('[data-act=fetchPool]');
+    if (poolBtn) poolBtn.addEventListener('click', async () => {
+      toast('正在抓取 LeetCode 题目池（几千道，约几秒）…', 'info');
+      const r = await window.lcAPI.fetchPool();
+      if (r.ok) toast(`题目池已更新：${r.count} 道候选`, 'success');
+      else toast('题目池抓取失败：' + r.error, 'error');
+      this.render(container);
+    });
+
     container.querySelectorAll('[data-act=fetchOne]').forEach(b => {
       b.addEventListener('click', async () => {
         toast(`正在抓取「${b.dataset.name}」…`, 'info');
@@ -147,6 +167,17 @@ window.PageLists = {
         const slug = cb.closest('.list-card').dataset.slug;
         await window.lcAPI.toggleList(slug, cb.checked);
         toast(cb.checked ? '已启用该题单（参与排期）' : '已停用该题单（不再参与排期）', 'success');
+      });
+    });
+
+    container.querySelectorAll('[data-act=learned]').forEach(b => {
+      b.addEventListener('click', async () => {
+        const list = lists.find(l => l.slug === b.dataset.slug);
+        if (!list || !list.questions) return toast('该题单尚无题目缓存', 'info');
+        if (!(await confirmDlg('标记已学过', `把「${list.name}」的 ${list.questions.length} 道题全部标记为「已学过/已做过」？之后它们不会再作为“新题”，只按“复习”排布。`, '标记'))) return;
+        const r = await window.lcAPI.markLearned(list.questions.map(q => q.questionFrontendId));
+        toast(`已标记 ${r.marked} 道题为「已学过」`, 'success');
+        APP.metaCache.invalidate();
       });
     });
 

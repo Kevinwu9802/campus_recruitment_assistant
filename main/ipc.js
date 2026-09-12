@@ -84,6 +84,16 @@ function registerIpc({ win, broadcast, notify }) {
     return true;
   });
 
+  // ---------- 题目池（新题候选） ----------
+  ipcMain.handle('pool:get', () => {
+    const p = store.get('pool') || {};
+    return { updatedAt: p.updatedAt || null, total: p.total || 0, count: (p.problems || []).length };
+  });
+  ipcMain.handle('pool:fetchAll', () => {
+    const { runPoolFetch } = require('./main'); // 惰性 require，避免循环依赖
+    return runPoolFetch('手动抓取题目池');
+  });
+
   // ---------- 每日计划 ----------
   ipcMain.handle('plan:get', (e, dateStr) => scheduler.getPlan(dateStr));
 
@@ -114,6 +124,10 @@ function registerIpc({ win, broadcast, notify }) {
     store.set('history', history);
     return true;
   });
+
+  ipcMain.handle('history:markLearned', (e, qids) => scheduler.markLearned(qids));
+
+  ipcMain.handle('history:purgePaid', () => scheduler.purgePaid());
 
   // ---------- 统计 ----------
   ipcMain.handle('stats:get', () => scheduler.getStats());
@@ -180,6 +194,7 @@ function registerIpc({ win, broadcast, notify }) {
   });
   ipcMain.handle('kaoyan:commitPending', (e, token, acceptedIdx) => kaoyan.commitPending(token, acceptedIdx));
   ipcMain.handle('kaoyan:discardPending', (e, token) => kaoyan.discardPending(token));
+  ipcMain.handle('kaoyan:listPending', () => kaoyan.listPending());
   ipcMain.handle('kaoyan:previewReclean', async (e, sourceId) => {
     try { return await kaoyan.previewReclean(sourceId); }
     catch (err) { return { ok: false, error: err.message }; }
@@ -208,6 +223,19 @@ function registerIpc({ win, broadcast, notify }) {
     const full = Object.assign({}, cfg || {}, { apiKey: meta.getApiKey() || (cfg && cfg.apiKey) });
     return require('./llm').testConnection(full);
   });
+
+  // ---------- 校招看板 ----------
+  ipcMain.handle('jobs:pickAndImport', async () => {
+    const r = await dialog.showOpenDialog({ properties: ['openFile'], filters: [
+      { name: 'Excel 表格', extensions: ['xlsx', 'xls', 'csv'] },
+      { name: '所有文件', extensions: ['*'] },
+    ] });
+    if (r.canceled || !r.filePaths.length) return { ok: false, canceled: true };
+    try { return require('./jobs').importXlsx(r.filePaths[0]); }
+    catch (err) { return { ok: false, error: err.message }; }
+  });
+  ipcMain.handle('jobs:get', () => require('./jobs').getDashboard());
+  ipcMain.handle('jobs:clear', () => require('./jobs').clear());
 
   // ---------- 配置 ----------
   ipcMain.handle('config:get', () => store.get('config') || store.defaultConfig());

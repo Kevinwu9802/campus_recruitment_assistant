@@ -64,7 +64,7 @@ app.whenReady().then(async () => {
     check('IPC 统计', typeof stats === 'number', `记忆库 ${stats} 题`);
 
     // 5. 逐页渲染（每个页面无异常）
-    const pages = ['today', 'calendar', 'lists', 'history', 'bawen', 'stats', 'timer', 'settings'];
+    const pages = ['today', 'calendar', 'lists', 'history', 'bawen', 'jobs', 'stats', 'timer', 'settings'];
     for (const p of pages) {
       const ok = await win.webContents.executeJavaScript(`
         (async () => {

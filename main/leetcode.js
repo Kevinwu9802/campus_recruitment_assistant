@@ -168,4 +168,43 @@ async function getListQuestions(favoriteSlug, onProgress) {
   };
 }
 
-module.exports = { parseSlug, getUserProfile, getUserLists, getListQuestions };
+const Q_POOL = `query problemsetQuestionList($categorySlug: String, $limit: Int, $skip: Int, $filters: QuestionListFilterInput) {
+  problemsetQuestionList(categorySlug: $categorySlug, limit: $limit, skip: $skip, filters: $filters) {
+    total
+    questions { frontendQuestionId title titleCn titleSlug difficulty paidOnly topicTags { name nameTranslated slug } }
+  }
+}`;
+
+/** 抓取 LeetCode 全部题目池（带标签/难度），用于「新题=不在题单且知识点命中」的候选。 */
+async function getProblemPool(max = 5000) {
+  const limit = 100;
+  let skip = 0;
+  let total = null;
+  let all = [];
+  const seen = new Set();
+  while (all.length < max) {
+    const d = await gql('problemsetQuestionList', Q_POOL, { categorySlug: '', limit, skip, filters: {} });
+    const r = d && d.problemsetQuestionList;
+    if (!r) throw new Error('获取题目池失败');
+    const rows = r.questions || [];
+    for (const q of rows) {
+      if (seen.has(q.frontendQuestionId)) continue;
+      seen.add(q.frontendQuestionId);
+      all.push({
+        frontendId: q.frontendQuestionId,
+        title: q.title,
+        titleCn: q.titleCn || q.title,
+        titleSlug: q.titleSlug,
+        difficulty: q.difficulty,
+        paidOnly: !!q.paidOnly,
+        tags: (q.topicTags || []).map(t => t.nameTranslated || t.name),
+      });
+    }
+    total = r.total;
+    if (all.length >= (total || max) || !rows.length) break;
+    skip += limit;
+  }
+  return { total, problems: all };
+}
+
+module.exports = { parseSlug, getUserProfile, getUserLists, getListQuestions, getProblemPool };

@@ -153,6 +153,34 @@ async function runFetch(reason) {
   }
 }
 
+// ---------------- 题目池（新题候选） ----------------
+async function runPoolFetch(reason) {
+  broadcast('fetchStatus', { running: true, step: '抓取 LeetCode 题目池（新题候选）…', reason });
+  try {
+    const config = store.get('config') || {};
+    const slug = config.userSlug || leetcode.parseSlug(config.profileUrl);
+    if (!slug) return { ok: false, error: '尚未配置个人主页' };
+    const r = await leetcode.getProblemPool();
+    store.set('pool', { updatedAt: new Date().toISOString(), total: r.total, problems: r.problems });
+    store.flush();
+    notify('题目池已更新', `共 ${r.problems.length} 道候选新题`);
+    broadcast('fetchStatus', { running: false });
+    return { ok: true, count: r.problems.length, total: r.total };
+  } catch (e) {
+    broadcast('fetchStatus', { running: false });
+    return { ok: false, error: e.message };
+  }
+}
+
+function poolStale() {
+  const p = store.get('pool');
+  if (!p || !p.updatedAt) return true;
+  const probs = p.problems || [];
+  // 旧缓存不含 paidOnly 字段 → 视为过期，重新抓取以支持“跳过会员题”
+  if (probs.length && !Object.prototype.hasOwnProperty.call(probs[0], 'paidOnly')) return true;
+  return (Date.now() - new Date(p.updatedAt).getTime()) > 24 * 3600 * 1000;
+}
+
 function shouldFetchToday() {
   const config = store.get('config') || {};
   if (!config.fetch || config.fetch.enabled === false) return false;
@@ -202,7 +230,8 @@ app.whenReady().then(() => {
   const stale = lists && lists.updatedAt
     ? (Date.now() - new Date(lists.updatedAt).getTime()) > (config.fetch?.staleHours || 12) * 3600 * 1000
     : true;
-  if (stale && (config.userSlug || leetcode.parseSlug(config.profileUrl || '')) ) runFetch('启动时题单过期');
+  if (stale && (config.userSlug || leetcode.parseSlug(config.profileUrl || ''))) runFetch('启动时题单过期');
+  if (poolStale()) runPoolFetch('启动时题目池过期');
   // 启动时同步一次
   if (config.sync && config.sync.enabled) sync.syncNow({ report: () => {} });
 
@@ -214,4 +243,4 @@ app.on('window-all-closed', () => {
 });
 
 // 供 ipc.js 使用
-module.exports = { broadcast, runFetch };
+module.exports = { broadcast, runFetch, runPoolFetch };

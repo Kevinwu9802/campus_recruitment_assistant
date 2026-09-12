@@ -17,7 +17,19 @@ const EXTRACT_JS = `(function(){
   for (var i=0;i<sels.length;i++){ var el=document.querySelector(sels[i]); if(el){ var t=txt(el); if(t.length>bestLen){best=t; bestLen=t.length;} } }
   var text = (best && bestLen>40) ? best : txt(document.body);
   var links = Array.prototype.map.call(document.querySelectorAll('a[href]'), function(a){ return a.href; }).filter(Boolean);
-  return { title: document.title||'', text: text, links: links };
+
+  // 分类：取侧边栏「活动项」所属分组标题（VitePress 通用结构）
+  var category = '', subCategory = '';
+  function headingOf(g){ if(!g) return ''; var h=g.querySelector(':scope > .sidebar-heading, :scope > summary'); return h ? (h.innerText||'').replace(/\\s+/g,' ').trim() : ''; }
+  var active = document.querySelector('.sidebar-link.active, .sidebar a.active, .sidebar-item.active > a, a.router-link-active.sidebar-link, .sidebar a.router-link-exact-active');
+  if (active) {
+    var groups = [], el = active.parentElement;
+    while (el && el !== document.body) { if (el.classList && el.classList.contains('sidebar-group')) groups.push(el); el = el.parentElement; }
+    if (groups.length) { category = headingOf(groups[groups.length-1]); subCategory = headingOf(groups[0]); if (subCategory === category) subCategory = ''; }
+    if (!category) { var p = active.closest('.sidebar, nav, aside'); var h = p ? p.querySelector('.sidebar-heading, h2, h3') : null; category = h ? (h.innerText||'').replace(/\\s+/g,' ').trim() : ''; }
+  }
+  if (!category) { var bc = document.querySelector('.breadcrumb, [aria-label=breadcrumb], .vp-breadcrumb'); if (bc) { var parts = (bc.innerText||'').split(/[\\/»>]/).map(function(s){return s.trim();}).filter(Boolean); if (parts.length>1) category = parts[parts.length-1]; } }
+  return { title: document.title||'', text: text, links: links, category: category, subCategory: subCategory };
 })()`;
 
 function createWin() {
@@ -36,7 +48,7 @@ async function loadInto(win, url, { settleMs = 3500, timeoutMs = 28000 } = {}) {
   ]);
   await sleep(settleMs);
   const data = await win.webContents.executeJavaScript(EXTRACT_JS);
-  return { title: String(data.title || ''), text: String(data.text || ''), links: data.links || [] };
+  return { title: String(data.title || ''), text: String(data.text || ''), links: data.links || [], category: String(data.category || ''), subCategory: String(data.subCategory || '') };
 }
 
 /** 渲染单个页面，返回 {title, text, links}。失败抛错。 */
@@ -64,7 +76,7 @@ async function renderPageDeep(url, { crawl = false, maxCrawl = 0, settleMs = 350
     catch (e) { throw e; }
     const origin = new URL(url).origin;
     const dir = new URL(url).pathname.replace(/[^/]*$/, '');
-    const pages = [{ url, title: main.title || url, text: main.text }];
+    const pages = [{ url, title: main.title || url, text: main.text, category: main.category || '', subCategory: main.subCategory || '' }];
     if (!crawl || !main.links || !main.links.length) return pages;
 
     const seen = new Set([url]);
@@ -85,7 +97,7 @@ async function renderPageDeep(url, { crawl = false, maxCrawl = 0, settleMs = 350
       if (onProgress) onProgress(`抓取子页 ${n}/${candidates.length}…`);
       try {
         const p = await loadInto(win, link, { settleMs: 2500, timeoutMs: 20000 });
-        if (p.text && p.text.replace(/\s+/g, '').length > 60) { pages.push({ url: link, title: p.title || link, text: p.text }); ok++; }
+        if (p.text && p.text.replace(/\s+/g, '').length > 60) { pages.push({ url: link, title: p.title || link, text: p.text, category: p.category || '', subCategory: p.subCategory || '' }); ok++; }
       } catch (e) { /* 单个子页失败忽略 */ }
     }
     if (onProgress) onProgress(`完成：成功抓取 ${ok} 页 / 共 ${candidates.length} 页`);
